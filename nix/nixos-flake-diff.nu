@@ -1,10 +1,5 @@
 #!/usr/bin/env nu
 
-if (version | get version) !~ "^0.74" {
-  print --stderr "This script is compatible only with nu 0.74.x"
-  exit 1
-}
-
 let worktree_base_dir = '.worktree'
 
 def commitish_worktree_dir [
