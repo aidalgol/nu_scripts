@@ -22,7 +22,7 @@ def cleanup_worktrees [
       git worktree remove --force (commitish_worktree_dir $commitish)
     } | complete)
     if $result.exit_code != 0 {
-      git_errors = true
+      $git_errors = true
     }
   }
   if $git_errors {
@@ -69,7 +69,7 @@ def main [
     if $store_paths.0 != $store_paths.1 {
       print "Build results are different"
       $store_paths | to text
-      result_code = 1
+      $result_code = 1
     } else {
       print "Build results are the same"
     }
