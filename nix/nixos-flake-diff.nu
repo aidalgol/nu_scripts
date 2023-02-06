@@ -1,5 +1,10 @@
 #!/usr/bin/env nu
 
+if (version | get version) !~ "^0.74" {
+  print --stderr "This script is compatible only with nu 0.74.x"
+  exit 1
+}
+
 let worktree_base_dir = '.worktree'
 
 def commitish_worktree_dir [
@@ -11,8 +16,18 @@ def commitish_worktree_dir [
 def cleanup_worktrees [
   commitishes: list
 ] {
+  mut git_errors = false
   $commitishes | each {|commitish|
-    git worktree remove --force (commitish_worktree_dir $commitish)
+    let result = (do {
+      git worktree remove --force (commitish_worktree_dir $commitish)
+    } | complete)
+    if $result.exit_code != 0 {
+      git_errors = true
+    }
+  }
+  if $git_errors {
+    print --stderr "An error occurred removing the git worktrees.  You may need to clean up manually."
+    exit 1
   }
   rm $worktree_base_dir
 }
@@ -26,14 +41,25 @@ def main [
 ] {
   let commitishes = [$commitish_A, $commitish_B]
   $commitishes | each {|commitish|
-    git worktree add --quiet --detach (commitish_worktree_dir $commitish) $commitish
+    let result = (do { 
+      git worktree add --quiet --detach (commitish_worktree_dir $commitish) $commitish
+    } | complete)
+    if $result.exit_code != 0 {
+      print --stderr "An error occurred trying to create git worktrees.  Unable to continue."
+      exit 1
+    }
   }
   try {
     $commitishes | each {|commitish|
       do {
         cd (commitish_worktree_dir $commitish)
         print $commitish
-        nixos-rebuild --flake $".#($hostname)" build
+        let result = (do { nixos-rebuild --flake $".#($hostname)" build } | complete)
+        if $result.exit_code != 0 {
+          print --stderr "nixos-rebuild failed"
+          cleanup_worktrees $commitishes
+          exit 1
+        }
       }
     }
     let store_paths = ($commitishes | each {|commitish|
@@ -52,7 +78,7 @@ def main [
     exit $result_code
   } catch {
     # In the event of an error, clean up the git worktrees we created.
-    cleanup_worktrees $commitishes
+    cleanup_worktrees $commitishes | ignore
     exit 1
   }
 }
