@@ -11,18 +11,15 @@ def commitish_worktree_dir [
 def cleanup_worktrees [
   commitishes: list
 ] {
-  mut git_errors = false
   $commitishes | each {|commitish|
     let result = (do {
       git worktree remove --force (commitish_worktree_dir $commitish)
     } | complete)
     if $result.exit_code != 0 {
-      $git_errors = true
+      print --no-newline $result.stderr
+      print --stderr "An error occurred removing the git worktrees.  You may need to clean up manually."
+      exit 1
     }
-  }
-  if $git_errors {
-    print --stderr "An error occurred removing the git worktrees.  You may need to clean up manually."
-    exit 1
   }
   rm $worktree_base_dir
 }
@@ -40,6 +37,7 @@ def main [
       git worktree add --quiet --detach (commitish_worktree_dir $commitish) $commitish
     } | complete)
     if $result.exit_code != 0 {
+      print --no-newline $result.stderr
       print --stderr "An error occurred trying to create git worktrees.  Unable to continue."
       exit 1
     }
@@ -48,9 +46,10 @@ def main [
     $commitishes | each {|commitish|
       do {
         cd (commitish_worktree_dir $commitish)
-        print $commitish
+        print $"Building ($commitish)"
         let result = (do { nixos-rebuild --flake $".#($hostname)" build } | complete)
         if $result.exit_code != 0 {
+          print --no-newline $result.stderr
           print --stderr "nixos-rebuild failed"
           cleanup_worktrees $commitishes
           exit 1
@@ -60,20 +59,18 @@ def main [
     let store_paths = ($commitishes | each {|commitish|
       ([(commitish_worktree_dir $commitish), result] | path join) | path expand
     })
-    mut result_code = 0
     if $store_paths.0 != $store_paths.1 {
       print "Build results are different"
       $store_paths | to text
-      $result_code = 1
+      cleanup_worktrees $commitishes
+      exit 1
     } else {
       print "Build results are the same"
+      cleanup_worktrees $commitishes
     }
-    # Clean up now that we're done.
-    cleanup_worktrees $commitishes
-    exit $result_code
   } catch {
     # In the event of an error, clean up the git worktrees we created.
-    cleanup_worktrees $commitishes | ignore
+    cleanup_worktrees $commitishes
     exit 1
   }
 }
